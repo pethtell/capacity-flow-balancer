@@ -1,0 +1,1189 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Returns FC — Capacity Flow Balancer</title>
+<style>
+/* ============================================================
+   CSS RESET & BASE
+   ============================================================ */
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+html { font-size: 14px; scroll-behavior: smooth; }
+body {
+  font-family: 'Segoe UI', system-ui, -apple-system, sans-serif;
+  background: #f0f2f5;
+  color: #333;
+  line-height: 1.5;
+  padding: 0 0 60px 0;
+}
+
+/* ============================================================
+   MASTER HEADER
+   ============================================================ */
+.master-header {
+  background: linear-gradient(135deg, #1a2744 0%, #1f3864 50%, #2b4a7f 100%);
+  color: #fff;
+  padding: 20px 24px;
+  text-align: center;
+  position: sticky;
+  top: 0;
+  z-index: 100;
+  box-shadow: 0 2px 12px rgba(0,0,0,0.25);
+}
+.master-header h1 { font-size: 1.55rem; font-weight: 700; letter-spacing: 0.5px; }
+.master-header .subtitle {
+  font-size: 0.78rem;
+  opacity: 0.75;
+  margin-top: 4px;
+  font-weight: 400;
+}
+.legend {
+  display: flex;
+  justify-content: center;
+  gap: 24px;
+  margin-top: 8px;
+  font-size: 0.72rem;
+}
+.legend-item { display: flex; align-items: center; gap: 5px; }
+.legend-swatch {
+  width: 14px; height: 14px; border-radius: 3px; display: inline-block;
+}
+.swatch-input { background: #ffffcc; border: 2px solid #4472c4; }
+.swatch-calc  { background: #f2f2f2; border: 1px solid #999; }
+.swatch-status { background: #c6efce; border: 1px solid #006100; }
+
+/* ============================================================
+   LAYOUT — RESPONSIVE GRID
+   ============================================================ */
+.dashboard { max-width: 1280px; margin: 0 auto; padding: 16px; }
+.row {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 16px;
+  margin-bottom: 16px;
+}
+.row.full { grid-template-columns: 1fr; }
+@media (max-width: 860px) {
+  .row { grid-template-columns: 1fr; }
+}
+
+/* ============================================================
+   CARD / SECTION
+   ============================================================ */
+.card {
+  background: #fff;
+  border-radius: 10px;
+  box-shadow: 0 1px 6px rgba(0,0,0,0.08);
+  overflow: hidden;
+  border: 1px solid #e0e0e0;
+}
+.card-header {
+  padding: 12px 16px;
+  font-size: 0.92rem;
+  font-weight: 700;
+  color: #fff;
+  letter-spacing: 0.3px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.card-body { padding: 16px; }
+
+/* Section header colors */
+.hdr-blue    { background: linear-gradient(135deg, #2e75b6, #1f5a94); }
+.hdr-green   { background: linear-gradient(135deg, #548235, #3d6928); }
+.hdr-purple  { background: linear-gradient(135deg, #7030a0, #5a2580); }
+.hdr-orange  { background: linear-gradient(135deg, #ed7d31, #c96a28); }
+.hdr-red     { background: linear-gradient(135deg, #c00000, #9a0000); }
+.hdr-dkblue  { background: linear-gradient(135deg, #1f3864, #152a4d); }
+.hdr-dkgreen { background: linear-gradient(135deg, #375623, #2a421a); }
+
+/* ============================================================
+   TABLE BASE
+   ============================================================ */
+table { width: 100%; border-collapse: collapse; }
+th, td {
+  padding: 8px 10px;
+  text-align: center;
+  border: 1px solid #dde1e6;
+  font-size: 0.85rem;
+}
+th {
+  background: #eaf0f7;
+  font-weight: 600;
+  color: #1f3864;
+  font-size: 0.78rem;
+  text-transform: uppercase;
+  letter-spacing: 0.3px;
+}
+.th-blue   { background: #d6e4f0; color: #1f3864; }
+.th-green  { background: #e2efda; color: #375623; }
+.th-orange { background: #fce4cc; color: #843c0c; }
+.th-purple { background: #e2d0f0; color: #7030a0; }
+.th-red    { background: #fbe5d6; color: #843c0c; }
+td.label-cell {
+  text-align: left;
+  font-weight: 500;
+  background: #fff;
+  color: #404040;
+}
+
+/* ============================================================
+   INPUT CELLS
+   ============================================================ */
+input.cell-input {
+  width: 80px;
+  padding: 6px 8px;
+  text-align: center;
+  font-size: 0.95rem;
+  font-weight: 600;
+  color: #1f3864;
+  background: #ffffcc;
+  border: 2px solid #4472c4;
+  border-radius: 5px;
+  outline: none;
+  transition: box-shadow 0.15s, border-color 0.15s;
+}
+input.cell-input:focus {
+  box-shadow: 0 0 0 3px rgba(68,114,196,0.25);
+  border-color: #2e5fa1;
+}
+input.cell-input.time-input { width: 110px; }
+
+/* ============================================================
+   CALCULATED / OUTPUT CELLS
+   ============================================================ */
+.calc-val {
+  font-weight: 700;
+  font-size: 0.95rem;
+  color: #375623;
+}
+.calc-val.large { font-size: 1.15rem; }
+td.calc-cell { background: #f7f8f9; }
+
+/* ============================================================
+   TOTAL / SUMMARY ROWS
+   ============================================================ */
+tr.total-row td {
+  font-weight: 700;
+  font-size: 0.92rem;
+}
+tr.total-blue td   { background: #d6e4f0; color: #1f3864; }
+tr.total-green td  { background: #e2efda; color: #375623; }
+tr.total-orange td { background: #fce4cc; color: #843c0c; }
+
+/* ============================================================
+   STATUS BADGES
+   ============================================================ */
+.badge {
+  display: inline-block;
+  padding: 5px 14px;
+  border-radius: 6px;
+  font-weight: 700;
+  font-size: 0.82rem;
+  letter-spacing: 0.3px;
+}
+.badge-green  { background: #c6efce; color: #006100; }
+.badge-red    { background: #ffc7ce; color: #9c0006; }
+.badge-blue   { background: #d6e4f0; color: #1f3864; }
+.badge-orange { background: #fce4cc; color: #843c0c; }
+.badge-gray   { background: #e0e0e0; color: #666; }
+
+/* ============================================================
+   FLOW BALANCE METER
+   ============================================================ */
+.balance-meter {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+  padding: 12px;
+  margin: 8px 0;
+}
+.meter-bar-container {
+  flex: 1;
+  max-width: 320px;
+  height: 18px;
+  background: #e0e0e0;
+  border-radius: 9px;
+  overflow: hidden;
+  position: relative;
+}
+.meter-bar {
+  height: 100%;
+  border-radius: 9px;
+  transition: width 0.4s ease, background 0.3s ease;
+  min-width: 2px;
+}
+.meter-label { font-weight: 700; font-size: 0.85rem; min-width: 80px; }
+
+/* ============================================================
+   BANNER (Projected Outcome)
+   ============================================================ */
+.banner {
+  padding: 12px 20px;
+  border-radius: 8px;
+  text-align: center;
+  font-weight: 700;
+  font-size: 0.95rem;
+  margin-top: 10px;
+  letter-spacing: 0.3px;
+}
+.banner-green { background: #c6efce; color: #006100; border: 1px solid #006100; }
+.banner-red   { background: #ffc7ce; color: #9c0006; border: 1px solid #9c0006; }
+
+/* ============================================================
+   PROJECTION TABLE
+   ============================================================ */
+.proj-table td { font-size: 0.8rem; padding: 6px 8px; }
+.proj-table th { font-size: 0.72rem; padding: 6px 8px; }
+tr.row-break td  { background: #fce4cc !important; color: #bf8f00; font-weight: 600; }
+tr.row-off td    { background: #e8e8e8 !important; color: #999; }
+tr.row-met td    { background: #c6efce !important; color: #006100; font-weight: 600; }
+tr.row-active td { background: #fff; }
+tr.row-stripe td { background: #f7fafd; }
+
+/* ============================================================
+   ACTION LABEL
+   ============================================================ */
+.action-add    { color: #9c0006; font-weight: 700; }
+.action-remove { color: #006100; font-weight: 700; }
+.action-none   { color: #4472c4; font-weight: 600; }
+
+/* ============================================================
+   HC CHANGE DISPLAY
+   ============================================================ */
+.hc-change {
+  display: inline-block;
+  padding: 3px 10px;
+  border-radius: 5px;
+  font-weight: 700;
+  font-size: 0.9rem;
+}
+.hc-pos { background: #ffc7ce; color: #9c0006; }
+.hc-neg { background: #c6efce; color: #006100; }
+.hc-zero { background: #d6e4f0; color: #4472c4; }
+
+/* ============================================================
+   RESET BUTTON
+   ============================================================ */
+.btn-reset {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 8px 20px;
+  background: #fff;
+  color: #1f3864;
+  border: 2px solid #4472c4;
+  border-radius: 6px;
+  font-weight: 600;
+  font-size: 0.82rem;
+  cursor: pointer;
+  transition: all 0.15s;
+  margin-left: 16px;
+}
+.btn-reset:hover { background: #4472c4; color: #fff; }
+
+/* ============================================================
+   KPI CARD MINI
+   ============================================================ */
+.kpi-row {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+  gap: 10px;
+  margin: 8px 0;
+}
+.kpi {
+  background: #f7f8f9;
+  border: 1px solid #dde1e6;
+  border-radius: 8px;
+  padding: 10px 12px;
+  text-align: center;
+}
+.kpi-label {
+  font-size: 0.7rem;
+  text-transform: uppercase;
+  letter-spacing: 0.4px;
+  color: #666;
+  font-weight: 600;
+  margin-bottom: 2px;
+}
+.kpi-value {
+  font-size: 1.3rem;
+  font-weight: 800;
+}
+.kpi-value.blue   { color: #1f3864; }
+.kpi-value.green  { color: #375623; }
+.kpi-value.red    { color: #c00000; }
+.kpi-value.orange { color: #bf8f00; }
+.kpi-value.purple { color: #7030a0; }
+
+/* ============================================================
+   MISC
+   ============================================================ */
+.note { font-size: 0.72rem; color: #888; font-style: italic; margin-top: 6px; }
+.separator { border: none; border-top: 1px solid #e0e0e0; margin: 8px 0; }
+.text-right { text-align: right; }
+.text-left { text-align: left; }
+.fw700 { font-weight: 700; }
+.mt8 { margin-top: 8px; }
+.mb8 { margin-bottom: 8px; }
+
+/* ============================================================
+   LIVE CLOCK & SYNC BUTTON
+   ============================================================ */
+.time-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin: 10px 0;
+  flex-wrap: wrap;
+}
+.btn-sync {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 5px 12px;
+  background: #fff;
+  color: #c00000;
+  border: 2px solid #c00000;
+  border-radius: 5px;
+  font-weight: 600;
+  font-size: 0.78rem;
+  cursor: pointer;
+  transition: all 0.15s;
+  white-space: nowrap;
+}
+.btn-sync:hover { background: #c00000; color: #fff; }
+.live-clock-display {
+  font-size: 0.82rem;
+  font-weight: 700;
+  color: #c00000;
+  background: #fbe5d6;
+  padding: 4px 10px;
+  border-radius: 5px;
+  letter-spacing: 0.3px;
+  white-space: nowrap;
+}
+.auto-note {
+  font-size: 0.68rem;
+  color: #999;
+  font-style: italic;
+}
+.manual-indicator {
+  font-size: 0.68rem;
+  font-weight: 700;
+  color: #bf8f00;
+  background: #fce4cc;
+  padding: 2px 8px;
+  border-radius: 4px;
+  display: none;
+}
+</style>
+</head>
+<body>
+
+<!-- ============================================================
+     MASTER HEADER
+     ============================================================ -->
+<header class="master-header">
+  <h1>&#128230; RETURNS FC — CAPACITY FLOW BALANCER</h1>
+  <div class="subtitle">Plug-and-Play Capacity Calculator &amp; Flow Balancer &nbsp;|&nbsp; All calculations update in real-time</div>
+  <div class="legend">
+    <span class="legend-item"><span class="legend-swatch swatch-input"></span> Input Cell</span>
+    <span class="legend-item"><span class="legend-swatch swatch-calc"></span> Calculated</span>
+    <span class="legend-item"><span class="legend-swatch swatch-status"></span> Status</span>
+    <button class="btn-reset" onclick="resetDefaults()">&#8634; Reset to Defaults</button>
+  </div>
+</header>
+
+<div class="dashboard">
+
+<!-- ============================================================
+     ROW 1: CLEAN DECANT + SPEC 05 GRADERS
+     ============================================================ -->
+<div class="row">
+
+  <!-- CLEAN DECANT -->
+  <div class="card">
+    <div class="card-header hdr-blue">&#128309; CLEAN DECANT — UPSTREAM SORTATION</div>
+    <div class="card-body">
+      <table>
+        <thead>
+          <tr>
+            <th class="th-blue" style="width:30%">Line</th>
+            <th class="th-blue" style="width:22%">Headcount</th>
+            <th class="th-blue" style="width:22%">Rate (UPH)</th>
+            <th class="th-blue" style="width:26%">Hourly Output</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td class="label-cell">Line 1</td>
+            <td><input class="cell-input" id="cd1_hc" type="number" min="0" max="99" value="4" oninput="recalc()"></td>
+            <td><input class="cell-input" id="cd1_rate" type="number" min="0" max="999" value="85" oninput="recalc()"></td>
+            <td class="calc-cell"><span class="calc-val" id="cd1_output">340</span></td>
+          </tr>
+          <tr>
+            <td class="label-cell">Line 2</td>
+            <td><input class="cell-input" id="cd2_hc" type="number" min="0" max="99" value="4" oninput="recalc()"></td>
+            <td><input class="cell-input" id="cd2_rate" type="number" min="0" max="999" value="85" oninput="recalc()"></td>
+            <td class="calc-cell"><span class="calc-val" id="cd2_output">340</span></td>
+          </tr>
+          <tr class="total-row total-blue">
+            <td class="text-left fw700">TOTAL</td>
+            <td><span id="cd_total_hc" class="fw700">8</span></td>
+            <td></td>
+            <td><span class="calc-val large" id="cd_total_output">680</span></td>
+          </tr>
+        </tbody>
+      </table>
+      <div class="note">Blended Rate: <span id="cd_blended_rate">85.0</span> UPH/person</div>
+    </div>
+  </div>
+
+  <!-- SPEC 05 GRADERS -->
+  <div class="card">
+    <div class="card-header hdr-green">&#128994; SPEC 05 GRADERS — DOWNSTREAM</div>
+    <div class="card-body">
+      <table>
+        <thead>
+          <tr>
+            <th class="th-green" style="width:30%">Area</th>
+            <th class="th-green" style="width:22%">Headcount</th>
+            <th class="th-green" style="width:22%">Rate (UPH)</th>
+            <th class="th-green" style="width:26%">Hourly Capacity</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td class="label-cell">Spec 05 Graders</td>
+            <td><input class="cell-input" id="sp_hc" type="number" min="0" max="99" value="8" oninput="recalc()"></td>
+            <td><input class="cell-input" id="sp_rate" type="number" min="0" max="999" value="45" oninput="recalc()"></td>
+            <td class="calc-cell"><span class="calc-val" id="sp_output">360</span></td>
+          </tr>
+          <tr class="total-row total-green">
+            <td class="text-left fw700">TOTAL</td>
+            <td><span id="sp_total_hc" class="fw700">8</span></td>
+            <td></td>
+            <td><span class="calc-val large" id="sp_total_output">360</span></td>
+          </tr>
+        </tbody>
+      </table>
+      <div class="note">Spec 05 processes all units flowing from Clean Decant</div>
+    </div>
+  </div>
+
+</div><!-- /row -->
+
+<!-- ============================================================
+     ROW 2: FLOW BALANCE SUMMARY
+     ============================================================ -->
+<div class="row full">
+  <div class="card">
+    <div class="card-header hdr-purple">&#128995; FLOW BALANCE — CLEAN DECANT vs SPEC 05 GRADERS</div>
+    <div class="card-body">
+      <div class="kpi-row">
+        <div class="kpi">
+          <div class="kpi-label">CD Output (units/hr)</div>
+          <div class="kpi-value blue" id="bal_cd">680</div>
+        </div>
+        <div class="kpi">
+          <div class="kpi-label">Spec 05 Capacity (units/hr)</div>
+          <div class="kpi-value green" id="bal_sp">360</div>
+        </div>
+        <div class="kpi">
+          <div class="kpi-label">Surplus / Deficit</div>
+          <div class="kpi-value purple" id="bal_delta">+320</div>
+        </div>
+        <div class="kpi">
+          <div class="kpi-label">Combined HC</div>
+          <div class="kpi-value" id="bal_hc" style="color:#404040;">16</div>
+        </div>
+      </div>
+      <div class="balance-meter">
+        <span class="meter-label text-right" style="color:#2e75b6;">CD</span>
+        <div class="meter-bar-container">
+          <div class="meter-bar" id="meter_cd" style="width:65%;background:#2e75b6;"></div>
+        </div>
+        <div class="meter-bar-container">
+          <div class="meter-bar" id="meter_sp" style="width:35%;background:#548235;float:right;"></div>
+        </div>
+        <span class="meter-label text-left" style="color:#548235;">Spec 05</span>
+      </div>
+      <div style="text-align:center;">
+        <span class="badge" id="bal_status">CLEAN DECANT OVERPRODUCING</span>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ============================================================
+     ROW 3: CAGE TRACKER + SHIFT TIME
+     ============================================================ -->
+<div class="row">
+
+  <!-- CAGE TRACKER -->
+  <div class="card">
+    <div class="card-header hdr-orange">&#128992; INVENTORY — CAGE TRACKER</div>
+    <div class="card-body">
+      <div class="note mb8">1 Cage = 12 Totes &times; 10 Units = <strong>120 Units/Cage</strong></div>
+      <table>
+        <thead>
+          <tr>
+            <th class="th-orange" style="width:38%">Drop Zone</th>
+            <th class="th-orange" style="width:20%"># Cages</th>
+            <th class="th-orange" style="width:22%">Units</th>
+            <th class="th-orange" style="width:20%">% of Total</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td class="label-cell">Line 1 RIV Drop Zone</td>
+            <td><input class="cell-input" id="cage_riv" type="number" min="0" max="999" value="10" oninput="recalc()"></td>
+            <td class="calc-cell"><span class="calc-val" id="cage_riv_units">1,200</span></td>
+            <td class="calc-cell"><span class="calc-val" id="cage_riv_pct">55.6%</span></td>
+          </tr>
+          <tr>
+            <td class="label-cell">Line 4/5 Inject Drop Zone</td>
+            <td><input class="cell-input" id="cage_inj" type="number" min="0" max="999" value="8" oninput="recalc()"></td>
+            <td class="calc-cell"><span class="calc-val" id="cage_inj_units">960</span></td>
+            <td class="calc-cell"><span class="calc-val" id="cage_inj_pct">44.4%</span></td>
+          </tr>
+          <tr class="total-row total-orange">
+            <td class="text-left fw700">TOTAL INVENTORY</td>
+            <td><span class="fw700" id="cage_total">18</span></td>
+            <td><span class="calc-val large" id="cage_total_units">2,160</span></td>
+            <td></td>
+          </tr>
+        </tbody>
+      </table>
+      <hr class="separator">
+      <table>
+        <tr>
+          <td class="label-cell" style="width:55%">Target Cages Remaining (EOS)</td>
+          <td style="width:20%"><input class="cell-input" id="cage_target" type="number" min="0" max="999" value="3" oninput="recalc()"></td>
+          <td class="calc-cell" style="width:25%"><span class="calc-val" id="cage_target_units">360</span> units</td>
+        </tr>
+        <tr style="background:#fce4cc;">
+          <td class="text-left fw700" style="color:#843c0c;">UNITS TO PROCESS</td>
+          <td><span class="fw700" style="color:#843c0c;" id="cage_to_process_cages">15</span> cages</td>
+          <td><span class="calc-val large" style="color:#c00000;" id="cage_to_process_units">1,800</span> units</td>
+        </tr>
+      </table>
+    </div>
+  </div>
+
+  <!-- SHIFT TIME CALCULATOR -->
+  <div class="card">
+    <div class="card-header hdr-red">&#128308; SHIFT TIME CALCULATOR</div>
+    <div class="card-body">
+      <table>
+        <tr>
+          <td class="label-cell" style="width:40%">Shift Start</td>
+          <td class="calc-cell"><strong>7:30 AM</strong></td>
+          <td class="label-cell">Shift End</td>
+          <td class="calc-cell"><strong>6:00 PM</strong></td>
+        </tr>
+        <tr>
+          <td class="label-cell">Break 1</td>
+          <td class="calc-cell">11:00 &#8211; 11:30 AM</td>
+          <td class="label-cell">Break 2</td>
+          <td class="calc-cell">3:00 &#8211; 3:30 PM</td>
+        </tr>
+        <tr style="background:#fbe5d6;">
+          <td class="label-cell fw700" style="color:#843c0c;">Total Shift</td>
+          <td class="calc-cell"><strong>10.5 hrs</strong></td>
+          <td class="label-cell fw700" style="color:#843c0c;">Total Productive</td>
+          <td class="calc-cell"><strong>9.5 hrs</strong></td>
+        </tr>
+      </table>
+      <hr class="separator">
+
+      <!-- CURRENT TIME — Live Clock Row -->
+      <div class="time-row">
+        <label style="font-weight:700;color:#c00000;font-size:0.92rem;">CURRENT TIME:</label>
+        <input class="cell-input time-input" id="current_time" type="time" value="10:00" oninput="onManualTimeChange()">
+        <button class="btn-sync" onclick="syncToCentralTime()" title="Re-sync to current Central Time">&#128260; Sync to CT</button>
+        <span class="live-clock-display" id="live_clock">--:-- -- CT</span>
+        <span class="manual-indicator" id="manual_indicator">MANUAL OVERRIDE</span>
+      </div>
+      <div class="auto-note" id="auto_note">Auto-updates every minute (Central Time &mdash; America/Chicago)</div>
+
+      <div class="kpi-row">
+        <div class="kpi">
+          <div class="kpi-label">Time to Shift End</div>
+          <div class="kpi-value red" id="shift_time_left">8.00 hrs</div>
+        </div>
+        <div class="kpi">
+          <div class="kpi-label">Remaining Breaks</div>
+          <div class="kpi-value orange" id="shift_breaks_left">1.00 hrs</div>
+        </div>
+        <div class="kpi">
+          <div class="kpi-label">Productive Hours Left</div>
+          <div class="kpi-value red" id="shift_productive_left" style="font-size:1.5rem;">7.00 hrs</div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+</div><!-- /row -->
+
+<!-- ============================================================
+     ROW 4: HEADCOUNT RECOMMENDATIONS
+     ============================================================ -->
+<div class="row full">
+  <div class="card">
+    <div class="card-header hdr-dkblue">&#128200; HEADCOUNT ADJUSTMENT RECOMMENDATIONS</div>
+    <div class="card-body">
+      <div class="note mb8">Based on remaining inventory, productive hours left, and current staffing &mdash; recommendations to clear target units and maintain flow balance</div>
+
+      <!-- Demand Analysis KPIs -->
+      <div class="kpi-row">
+        <div class="kpi">
+          <div class="kpi-label">Units to Process</div>
+          <div class="kpi-value red" id="rec_units">1,800</div>
+        </div>
+        <div class="kpi">
+          <div class="kpi-label">Productive Hrs Left</div>
+          <div class="kpi-value red" id="rec_hrs">7.00</div>
+        </div>
+        <div class="kpi">
+          <div class="kpi-label">Required Throughput</div>
+          <div class="kpi-value red" id="rec_required" style="font-size:1.5rem;">258 u/hr</div>
+        </div>
+        <div class="kpi">
+          <div class="kpi-label">Current CD Output</div>
+          <div class="kpi-value blue" id="rec_cd_current">680</div>
+        </div>
+        <div class="kpi">
+          <div class="kpi-label">Current Spec 05</div>
+          <div class="kpi-value green" id="rec_sp_current">360</div>
+        </div>
+      </div>
+
+      <hr class="separator">
+
+      <!-- Recommendations Table -->
+      <table class="mt8">
+        <thead>
+          <tr>
+            <th class="th-blue" style="width:18%">Area</th>
+            <th class="th-blue" style="width:10%">Current HC</th>
+            <th class="th-blue" style="width:10%">Rate</th>
+            <th class="th-blue" style="width:12%">Current Output</th>
+            <th class="th-blue" style="width:12%">Rec. HC</th>
+            <th class="th-blue" style="width:12%">Rec. Output</th>
+            <th class="th-blue" style="width:10%">HC Change</th>
+            <th class="th-blue" style="width:16%">Action</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr style="background:#eef3fa;">
+            <td class="label-cell fw700" style="color:#1f3864;">Clean Decant</td>
+            <td id="rec_cd_hc">8</td>
+            <td id="rec_cd_rate">85.0</td>
+            <td id="rec_cd_out">680</td>
+            <td><span class="calc-val large" id="rec_cd_rec_hc">4</span></td>
+            <td id="rec_cd_rec_out">340</td>
+            <td><span class="hc-change" id="rec_cd_change">-4</span></td>
+            <td><span id="rec_cd_action">REMOVE 4 HC</span></td>
+          </tr>
+          <tr style="background:#f0f7ec;">
+            <td class="label-cell fw700" style="color:#375623;">Spec 05 Graders</td>
+            <td id="rec_sp_hc">8</td>
+            <td id="rec_sp_rate">45</td>
+            <td id="rec_sp_out">360</td>
+            <td><span class="calc-val large" id="rec_sp_rec_hc">8</span></td>
+            <td id="rec_sp_rec_out">360</td>
+            <td><span class="hc-change" id="rec_sp_change">0</span></td>
+            <td><span id="rec_sp_action">NO CHANGE</span></td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+  </div>
+</div>
+
+<!-- ============================================================
+     ROW 5: PROJECTED OUTCOME
+     ============================================================ -->
+<div class="row full">
+  <div class="card">
+    <div class="card-header hdr-dkgreen">&#9989; PROJECTED SHIFT OUTCOME (If Recommendations Applied)</div>
+    <div class="card-body">
+      <div class="kpi-row">
+        <div class="kpi">
+          <div class="kpi-label">Rec. CD Output (u/hr)</div>
+          <div class="kpi-value blue" id="proj_cd_out">340</div>
+        </div>
+        <div class="kpi">
+          <div class="kpi-label">Rec. Spec 05 Cap (u/hr)</div>
+          <div class="kpi-value green" id="proj_sp_out">360</div>
+        </div>
+        <div class="kpi">
+          <div class="kpi-label">Flow Balance (u/hr delta)</div>
+          <div class="kpi-value purple" id="proj_balance">-20</div>
+        </div>
+        <div class="kpi">
+          <div class="kpi-label">Projected Units Produced</div>
+          <div class="kpi-value blue" id="proj_units" style="font-size:1.5rem;">2,380</div>
+        </div>
+        <div class="kpi">
+          <div class="kpi-label">Units to Process Target</div>
+          <div class="kpi-value red" id="proj_target">1,800</div>
+        </div>
+        <div class="kpi">
+          <div class="kpi-label">Surplus / Shortfall</div>
+          <div class="kpi-value" id="proj_surplus" style="font-size:1.5rem;">+580</div>
+        </div>
+      </div>
+      <div class="banner" id="proj_banner">ON TRACK: Projected to clear target with +580 unit surplus</div>
+    </div>
+  </div>
+</div>
+
+<!-- ============================================================
+     ROW 6: HOURLY PROJECTION TABLE
+     ============================================================ -->
+<div class="row full">
+  <div class="card">
+    <div class="card-header hdr-dkblue">&#128337; HOURLY FLOW PROJECTION TABLE (Next 10 Hours from Current Time)</div>
+    <div class="card-body" style="overflow-x:auto;">
+      <table class="proj-table" id="proj_table">
+        <thead>
+          <tr>
+            <th class="th-blue">Hour #</th>
+            <th class="th-blue">Clock Time</th>
+            <th class="th-blue">Status</th>
+            <th class="th-blue">CD Cumulative</th>
+            <th class="th-blue">Spec 05 Cumulative</th>
+            <th class="th-blue">Cumul. Delta</th>
+            <th class="th-blue">Cages Remaining</th>
+            <th class="th-blue">Progress</th>
+          </tr>
+        </thead>
+        <tbody id="proj_tbody">
+          <!-- JS populated -->
+        </tbody>
+      </table>
+    </div>
+  </div>
+</div>
+
+</div><!-- /dashboard -->
+
+<!-- ============================================================
+     JAVASCRIPT ENGINE
+     ============================================================ -->
+<script>
+/* ============================================================
+   CONSTANTS
+   ============================================================ */
+const UNITS_PER_CAGE = 120;
+const SHIFT_START = 7.5;      // 7:30 AM in decimal hours
+const SHIFT_END   = 18.0;     // 6:00 PM
+const BREAK1_START = 11.0;
+const BREAK1_END   = 11.5;
+const BREAK2_START = 15.0;
+const BREAK2_END   = 15.5;
+const BALANCE_THRESHOLD = 10;
+const CT_TIMEZONE = 'America/Chicago';
+
+const DEFAULTS = {
+  cd1_hc: 4, cd1_rate: 85,
+  cd2_hc: 4, cd2_rate: 85,
+  sp_hc: 8,  sp_rate: 45,
+  cage_riv: 10, cage_inj: 8, cage_target: 3
+};
+
+/* ============================================================
+   LIVE CLOCK STATE
+   ============================================================ */
+let isManualOverride = false;   // true when user manually changes time
+let clockIntervalId = null;     // interval handle
+
+/* ============================================================
+   CENTRAL TIME HELPERS
+   ============================================================ */
+function getCentralTimeNow() {
+  // Returns {hours24, minutes, displayStr, inputVal}
+  const now = new Date();
+  // Use Intl to get Central Time components — handles CST/CDT automatically
+  const parts = {};
+  const formatter = new Intl.DateTimeFormat('en-US', {
+    timeZone: CT_TIMEZONE,
+    hour: 'numeric',
+    minute: '2-digit',
+    second: '2-digit',
+    hour12: true
+  });
+  const display12 = formatter.format(now);
+
+  // Get 24h components for the input field
+  const fmt24 = new Intl.DateTimeFormat('en-US', {
+    timeZone: CT_TIMEZONE,
+    hour: '2-digit',
+    minute: '2-digit',
+    hour12: false
+  });
+  const parts24 = fmt24.formatToParts(now);
+  let h24 = 0, m = 0;
+  for (const p of parts24) {
+    if (p.type === 'hour') h24 = parseInt(p.value, 10);
+    if (p.type === 'minute') m = parseInt(p.value, 10);
+  }
+  // Handle midnight edge case: Intl may return 24 for midnight
+  if (h24 === 24) h24 = 0;
+
+  const inputVal = String(h24).padStart(2, '0') + ':' + String(m).padStart(2, '0');
+
+  // Determine CST vs CDT
+  const tzAbbr = new Intl.DateTimeFormat('en-US', {
+    timeZone: CT_TIMEZONE,
+    timeZoneName: 'short'
+  }).formatToParts(now).find(p => p.type === 'timeZoneName');
+  const tzLabel = tzAbbr ? tzAbbr.value : 'CT';
+
+  return {
+    hours24: h24,
+    minutes: m,
+    inputVal: inputVal,
+    displayStr: display12 + ' ' + tzLabel
+  };
+}
+
+/* ============================================================
+   CLOCK TICK — runs every 30 seconds
+   ============================================================ */
+function clockTick() {
+  const ct = getCentralTimeNow();
+
+  // Always update the live clock display
+  document.getElementById('live_clock').textContent = ct.displayStr;
+
+  // Only auto-update the input if NOT in manual override
+  if (!isManualOverride) {
+    document.getElementById('current_time').value = ct.inputVal;
+    recalc();
+  }
+}
+
+/* ============================================================
+   SYNC BUTTON — re-syncs to Central Time
+   ============================================================ */
+function syncToCentralTime() {
+  isManualOverride = false;
+  document.getElementById('manual_indicator').style.display = 'none';
+  document.getElementById('auto_note').textContent = 'Auto-updates every minute (Central Time \u2014 America/Chicago)';
+  const ct = getCentralTimeNow();
+  document.getElementById('current_time').value = ct.inputVal;
+  document.getElementById('live_clock').textContent = ct.displayStr;
+  recalc();
+}
+
+/* ============================================================
+   MANUAL TIME CHANGE HANDLER
+   ============================================================ */
+function onManualTimeChange() {
+  isManualOverride = true;
+  document.getElementById('manual_indicator').style.display = 'inline-block';
+  document.getElementById('auto_note').textContent = 'Auto-update paused \u2014 manual override active. Click \u201cSync to CT\u201d to resume.';
+  recalc();
+}
+
+/* ============================================================
+   GENERAL HELPERS
+   ============================================================ */
+function getVal(id) { return parseFloat(document.getElementById(id).value) || 0; }
+function fmt(n) { return n.toLocaleString('en-US'); }
+function fmtSign(n) { return (n > 0 ? '+' : '') + n.toLocaleString('en-US'); }
+function fmtPct(n) { return (n * 100).toFixed(1) + '%'; }
+function fmtDec(n, d) { return n.toFixed(d || 2); }
+
+function timeToDecimal(timeStr) {
+  const [h, m] = timeStr.split(':').map(Number);
+  return h + m / 60;
+}
+
+function decimalToTimeStr(dec) {
+  if (dec < 0) dec = 0;
+  let h = Math.floor(dec);
+  let m = Math.round((dec - h) * 60);
+  if (m === 60) { h++; m = 0; }
+  const ampm = h >= 12 ? 'PM' : 'AM';
+  const h12 = h === 0 ? 12 : (h > 12 ? h - 12 : h);
+  return h12 + ':' + String(m).padStart(2, '0') + ' ' + ampm;
+}
+
+function getRemainingBreakHours(currentDec) {
+  let remaining = 0;
+  if (currentDec <= BREAK1_START) {
+    remaining += 0.5;
+  } else if (currentDec < BREAK1_END) {
+    remaining += BREAK1_END - currentDec;
+  }
+  if (currentDec <= BREAK2_START) {
+    remaining += 0.5;
+  } else if (currentDec < BREAK2_END) {
+    remaining += BREAK2_END - currentDec;
+  }
+  return remaining;
+}
+
+function isOnBreak(dec) {
+  return (dec >= BREAK1_START && dec < BREAK1_END) ||
+         (dec >= BREAK2_START && dec < BREAK2_END);
+}
+
+function setHcChange(elId, actionElId, delta) {
+  const el = document.getElementById(elId);
+  const actEl = document.getElementById(actionElId);
+  el.textContent = fmtSign(delta);
+  if (delta > 0) {
+    el.className = 'hc-change hc-pos';
+    actEl.innerHTML = '<span class="action-add">ADD ' + delta + ' HC</span>';
+  } else if (delta < 0) {
+    el.className = 'hc-change hc-neg';
+    actEl.innerHTML = '<span class="action-remove">REMOVE ' + Math.abs(delta) + ' HC</span>';
+  } else {
+    el.className = 'hc-change hc-zero';
+    actEl.innerHTML = '<span class="action-none">NO CHANGE</span>';
+  }
+}
+
+/* ============================================================
+   MAIN RECALCULATION
+   ============================================================ */
+function recalc() {
+  // --- Section 1: Clean Decant ---
+  const cd1Hc   = getVal('cd1_hc');
+  const cd1Rate  = getVal('cd1_rate');
+  const cd2Hc   = getVal('cd2_hc');
+  const cd2Rate  = getVal('cd2_rate');
+  const cd1Out   = cd1Hc * cd1Rate;
+  const cd2Out   = cd2Hc * cd2Rate;
+  const cdTotalHc = cd1Hc + cd2Hc;
+  const cdTotalOut = cd1Out + cd2Out;
+  const cdBlended = cdTotalHc > 0 ? cdTotalOut / cdTotalHc : 0;
+
+  document.getElementById('cd1_output').textContent = fmt(cd1Out);
+  document.getElementById('cd2_output').textContent = fmt(cd2Out);
+  document.getElementById('cd_total_hc').textContent = fmt(cdTotalHc);
+  document.getElementById('cd_total_output').textContent = fmt(cdTotalOut);
+  document.getElementById('cd_blended_rate').textContent = fmtDec(cdBlended, 1);
+
+  // --- Section 2: Spec 05 ---
+  const spHc   = getVal('sp_hc');
+  const spRate  = getVal('sp_rate');
+  const spOut   = spHc * spRate;
+
+  document.getElementById('sp_output').textContent = fmt(spOut);
+  document.getElementById('sp_total_hc').textContent = fmt(spHc);
+  document.getElementById('sp_total_output').textContent = fmt(spOut);
+
+  // --- Section 3: Flow Balance ---
+  const delta = cdTotalOut - spOut;
+  document.getElementById('bal_cd').textContent = fmt(cdTotalOut);
+  document.getElementById('bal_sp').textContent = fmt(spOut);
+  document.getElementById('bal_delta').textContent = fmtSign(delta);
+  document.getElementById('bal_hc').textContent = fmt(cdTotalHc + spHc);
+
+  const maxOutput = Math.max(cdTotalOut, spOut, 1);
+  document.getElementById('meter_cd').style.width = ((cdTotalOut / maxOutput) * 100) + '%';
+  document.getElementById('meter_sp').style.width = ((spOut / maxOutput) * 100) + '%';
+
+  const statusEl = document.getElementById('bal_status');
+  if (Math.abs(delta) <= BALANCE_THRESHOLD) {
+    statusEl.textContent = 'BALANCED';
+    statusEl.className = 'badge badge-green';
+    document.getElementById('bal_delta').style.color = '#006100';
+  } else if (delta > 0) {
+    statusEl.textContent = 'CLEAN DECANT OVERPRODUCING \u2014 Reduce CD HC or Add Graders';
+    statusEl.className = 'badge badge-red';
+    document.getElementById('bal_delta').style.color = '#9c0006';
+  } else {
+    statusEl.textContent = 'GRADERS STARVED \u2014 Add CD HC or Reduce Graders';
+    statusEl.className = 'badge badge-red';
+    document.getElementById('bal_delta').style.color = '#9c0006';
+  }
+
+  // --- Section 4: Cage Tracker ---
+  const cageRiv = getVal('cage_riv');
+  const cageInj = getVal('cage_inj');
+  const cageTarget = getVal('cage_target');
+  const cageTotal = cageRiv + cageInj;
+  const unitsRiv = cageRiv * UNITS_PER_CAGE;
+  const unitsInj = cageInj * UNITS_PER_CAGE;
+  const unitsTotal = cageTotal * UNITS_PER_CAGE;
+  const unitsTarget = cageTarget * UNITS_PER_CAGE;
+  const cagesToProcess = Math.max(0, cageTotal - cageTarget);
+  const unitsToProcess = Math.max(0, unitsTotal - unitsTarget);
+
+  document.getElementById('cage_riv_units').textContent = fmt(unitsRiv);
+  document.getElementById('cage_inj_units').textContent = fmt(unitsInj);
+  document.getElementById('cage_riv_pct').textContent = cageTotal > 0 ? fmtPct(cageRiv / cageTotal) : '0.0%';
+  document.getElementById('cage_inj_pct').textContent = cageTotal > 0 ? fmtPct(cageInj / cageTotal) : '0.0%';
+  document.getElementById('cage_total').textContent = fmt(cageTotal);
+  document.getElementById('cage_total_units').textContent = fmt(unitsTotal);
+  document.getElementById('cage_target_units').textContent = fmt(unitsTarget);
+  document.getElementById('cage_to_process_cages').textContent = fmt(cagesToProcess);
+  document.getElementById('cage_to_process_units').textContent = fmt(unitsToProcess);
+
+  // --- Section 5: Shift Time ---
+  const timeStr = document.getElementById('current_time').value || '10:00';
+  const currentDec = timeToDecimal(timeStr);
+  const timeToEnd = Math.max(0, SHIFT_END - currentDec);
+  const breaksLeft = getRemainingBreakHours(currentDec);
+  const productiveLeft = Math.max(0, timeToEnd - breaksLeft);
+
+  document.getElementById('shift_time_left').textContent = fmtDec(timeToEnd) + ' hrs';
+  document.getElementById('shift_breaks_left').textContent = fmtDec(breaksLeft) + ' hrs';
+  document.getElementById('shift_productive_left').textContent = fmtDec(productiveLeft) + ' hrs';
+
+  // --- Section 6: Headcount Recommendations ---
+  const requiredThroughput = productiveLeft > 0 ? Math.ceil(unitsToProcess / productiveLeft) : 0;
+  const recCdHc = cdBlended > 0 ? Math.ceil(requiredThroughput / cdBlended) : 0;
+  const recCdOut = recCdHc * cdBlended;
+  const recSpHc = spRate > 0 ? Math.ceil(recCdOut / spRate) : 0;
+  const recSpOut = recSpHc * spRate;
+  const cdHcChange = recCdHc - cdTotalHc;
+  const spHcChange = recSpHc - spHc;
+
+  document.getElementById('rec_units').textContent = fmt(unitsToProcess);
+  document.getElementById('rec_hrs').textContent = fmtDec(productiveLeft);
+  document.getElementById('rec_required').textContent = fmt(requiredThroughput) + ' u/hr';
+  document.getElementById('rec_cd_current').textContent = fmt(cdTotalOut);
+  document.getElementById('rec_sp_current').textContent = fmt(spOut);
+
+  document.getElementById('rec_cd_hc').textContent = fmt(cdTotalHc);
+  document.getElementById('rec_cd_rate').textContent = fmtDec(cdBlended, 1);
+  document.getElementById('rec_cd_out').textContent = fmt(cdTotalOut);
+  document.getElementById('rec_cd_rec_hc').textContent = fmt(recCdHc);
+  document.getElementById('rec_cd_rec_out').textContent = fmt(Math.round(recCdOut));
+  setHcChange('rec_cd_change', 'rec_cd_action', cdHcChange);
+
+  document.getElementById('rec_sp_hc').textContent = fmt(spHc);
+  document.getElementById('rec_sp_rate').textContent = fmt(spRate);
+  document.getElementById('rec_sp_out').textContent = fmt(spOut);
+  document.getElementById('rec_sp_rec_hc').textContent = fmt(recSpHc);
+  document.getElementById('rec_sp_rec_out').textContent = fmt(Math.round(recSpOut));
+  setHcChange('rec_sp_change', 'rec_sp_action', spHcChange);
+
+  // --- Section 7: Projected Outcome ---
+  const projUnits = Math.round(recCdOut * productiveLeft);
+  const projSurplus = projUnits - unitsToProcess;
+  const projBalanceDelta = Math.round(recCdOut - recSpOut);
+
+  document.getElementById('proj_cd_out').textContent = fmt(Math.round(recCdOut));
+  document.getElementById('proj_sp_out').textContent = fmt(Math.round(recSpOut));
+  document.getElementById('proj_balance').textContent = fmtSign(projBalanceDelta);
+  document.getElementById('proj_units').textContent = fmt(projUnits);
+  document.getElementById('proj_target').textContent = fmt(unitsToProcess);
+
+  const surplusEl = document.getElementById('proj_surplus');
+  surplusEl.textContent = fmtSign(projSurplus);
+  surplusEl.style.color = projSurplus >= 0 ? '#006100' : '#9c0006';
+
+  const bannerEl = document.getElementById('proj_banner');
+  if (projSurplus >= 0) {
+    bannerEl.textContent = 'ON TRACK: Projected to clear target with ' + fmtSign(projSurplus) + ' unit surplus';
+    bannerEl.className = 'banner banner-green';
+  } else {
+    bannerEl.textContent = 'AT RISK: Projected shortfall of ' + fmt(Math.abs(projSurplus)) + ' units \u2014 consider additional HC or extending shift';
+    bannerEl.className = 'banner banner-red';
+  }
+
+  // --- Section 8: Hourly Projection Table ---
+  buildProjectionTable(currentDec, cdTotalOut, spOut, cageTotal, cageTarget);
+}
+
+/* ============================================================
+   HOURLY PROJECTION TABLE
+   ============================================================ */
+function buildProjectionTable(currentDec, cdPerHr, spPerHr, totalCages, targetCages) {
+  const tbody = document.getElementById('proj_tbody');
+  tbody.innerHTML = '';
+  let cdCum = 0;
+  let spCum = 0;
+
+  for (let i = 1; i <= 10; i++) {
+    const hourDec = currentDec + i;
+    const clockStr = decimalToTimeStr(hourDec);
+    const offShift = hourDec > SHIFT_END;
+    const hourMid = hourDec - 0.5;
+    const breakFlag = !offShift && isOnBreak(hourMid);
+
+    if (!offShift && !breakFlag) {
+      cdCum += cdPerHr;
+      spCum += spPerHr;
+    }
+
+    const cumDelta = cdCum - spCum;
+    const cagesRemaining = Math.max(0, totalCages - (cdCum / UNITS_PER_CAGE));
+    const targetMet = cagesRemaining <= targetCages && cdCum > 0;
+
+    let rowClass = 'row-active';
+    if (offShift) rowClass = 'row-off';
+    else if (breakFlag) rowClass = 'row-break';
+    else if (targetMet) rowClass = 'row-met';
+    else if (i % 2 === 0) rowClass = 'row-stripe';
+
+    let statusBadge = '';
+    if (offShift) {
+      statusBadge = '<span class="badge badge-gray">OFF SHIFT</span>';
+    } else if (breakFlag) {
+      statusBadge = '<span class="badge badge-orange">ON BREAK</span>';
+    } else if (targetMet) {
+      statusBadge = '<span class="badge badge-green">TARGET MET</span>';
+    } else {
+      statusBadge = '<span class="badge badge-blue">PROCESSING</span>';
+    }
+
+    const tr = document.createElement('tr');
+    tr.className = rowClass;
+    tr.innerHTML = '<td>' + i + '</td>' +
+      '<td>' + clockStr + '</td>' +
+      '<td>' + statusBadge + '</td>' +
+      '<td>' + fmt(Math.round(cdCum)) + '</td>' +
+      '<td>' + fmt(Math.round(spCum)) + '</td>' +
+      '<td>' + fmtSign(Math.round(cumDelta)) + '</td>' +
+      '<td>' + fmtDec(cagesRemaining, 1) + '</td>' +
+      '<td>' + statusBadge + '</td>';
+    tbody.appendChild(tr);
+  }
+}
+
+/* ============================================================
+   RESET DEFAULTS
+   ============================================================ */
+function resetDefaults() {
+  document.getElementById('cd1_hc').value = DEFAULTS.cd1_hc;
+  document.getElementById('cd1_rate').value = DEFAULTS.cd1_rate;
+  document.getElementById('cd2_hc').value = DEFAULTS.cd2_hc;
+  document.getElementById('cd2_rate').value = DEFAULTS.cd2_rate;
+  document.getElementById('sp_hc').value = DEFAULTS.sp_hc;
+  document.getElementById('sp_rate').value = DEFAULTS.sp_rate;
+  document.getElementById('cage_riv').value = DEFAULTS.cage_riv;
+  document.getElementById('cage_inj').value = DEFAULTS.cage_inj;
+  document.getElementById('cage_target').value = DEFAULTS.cage_target;
+  // Re-sync time to Central on reset
+  syncToCentralTime();
+}
+
+/* ============================================================
+   INITIALIZATION
+   ============================================================ */
+document.addEventListener('DOMContentLoaded', function() {
+  // Set initial time to Central Time
+  syncToCentralTime();
+
+  // Start live clock — tick every 30 seconds
+  clockTick();
+  clockIntervalId = setInterval(clockTick, 30000);
+});
+</script>
+
+</body>
+</html>
